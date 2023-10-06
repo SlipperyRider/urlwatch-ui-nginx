@@ -1,0 +1,73 @@
+FROM node:19-alpine AS BUILD_IMAGE
+
+WORKDIR /usr/src/app
+
+COPY package.json .
+COPY pnpm-lock.yaml .
+
+RUN npm install -g pnpm
+RUN pnpm install --no-frozen-lockfile
+
+COPY . .
+
+RUN pnpm build
+
+RUN pnpm prune --prod
+
+FROM node:19-alpine
+
+WORKDIR /usr/src/app
+
+COPY --from=BUILD_IMAGE /usr/src/app/build ./build
+COPY --from=BUILD_IMAGE /usr/src/app/node_modules ./node_modules
+COPY --from=BUILD_IMAGE /usr/src/app/package.json ./package.json
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+EXPOSE 3000
+
+RUN set -xe \
+    && apk add --no-cache ca-certificates \
+                          bash            \
+                          build-base      \
+                          curl            \
+                          jq              \
+                          libffi-dev      \
+                          libxml2         \
+                          libxml2-dev     \
+                          libxslt         \
+                          libxslt-dev     \
+                          openssl-dev     \
+                          python3         \
+                          python3-dev     \
+    && curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 \
+    && pip3 install --no-binary lxml           \
+                                aioxmpp        \
+                                appdirs        \
+                                beautifulsoup4 \
+                                chump          \
+                                cssbeautifier  \
+                                cssselect      \
+                                jsbeautifier   \
+                                keyring        \
+                                keyrings.alt   \
+                                lxml           \
+                                markdown2      \
+                                matrix_client  \
+                                minidb         \
+                                pushbullet.py  \
+                                pyppeteer      \
+                                pyyaml         \
+                                requests       \
+                                urlwatch       \
+    && apk del build-base  \
+               libffi-dev  \
+               libxml2-dev \
+               libxslt-dev \
+               openssl-dev \
+               python3-dev \
+    && echo '*/30 * * * * cd /root/.urlwatch && urlwatch --urls urls.yaml --config urlwatch.yaml --hooks hooks.py --cache cache.db' | crontab -
+
+VOLUME /root/.urlwatch
+
+CMD [ "npm", "start" ]
